@@ -2,20 +2,25 @@
 #
 # Skript: apache_check.sh
 # Eesmärk: Kontrollida, kas Apache2 on paigaldatud ja käivitunud.
-# Kasutus: chmod +x apache_check.sh; ./apache_check.sh
+# Logifail: ./apache_check.log (töökataloogis)
+#
+# Kasutus:
+#   chmod +x apache_check.sh
+#   ./apache_check.sh
 
 SERVICE="apache2"
-LOGFILE="/var/log/apache_check.log"
-TIMESTAMP="$(date '+%Y-%m-%d %H:%M:%S')"
+LOGFILE="./apache_check.log"
 
-# Funktsioon: logi jooksvaid sõnumeid nii ekraanile kui failile
+# Funktsioon: logib sõnumid koos timestampiga käivituskausta faili ja STDOUT-i
 log_msg() {
   local level="$1"
   local message="$2"
-  echo "[$TIMESTAMP] [$level] $message" | tee -a "$LOGFILE"
+  local ts
+  ts="$(date '+%Y-%m-%d %H:%M:%S')"
+  echo "[$ts] [$level] $message" | tee -a "$LOGFILE"
 }
 
-# 1) Kontrolli, kas käsk 'apache2' üldse eksisteerib (paigaldatud)
+# 1) Kontrolli, kas käsk 'apache2' eksisteerib (kas Apache paigaldatud)
 if ! command -v "$SERVICE" &>/dev/null; then
   log_msg "ERROR" "Teenust '$SERVICE' ei leitud (mitte paigaldatud)."
   exit 1
