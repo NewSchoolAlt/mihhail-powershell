@@ -1,54 +1,56 @@
 <#
 .SYNOPSIS
-    Kontrollib, kas Apache2 (httpd) on installitud ja töökorras Windows Serveri PowerShelli keskkonnas (nt WSL-is või Linuxi PowerShellis).
+  Kontrollib, kas teenus 'W3SVC' (IIS) on paigaldatud ja käivitunud.
 
-.NOTES
-    Käivitamiseks: Powershellis “./Check-Apache.ps1” (WC: Powershell Core Linuxi peal või Windowsi puhtal keskkonnal, aga siis Apache asemel nt IIS-i kontroll).
+.Kasutus
+  Lae skript alla: C:\Scripts\IIS_Check.ps1
+  Käivita PowerShell-is (jookse administraatori õigustes):
+    powershell.exe -ExecutionPolicy Bypass -File "C:\Scripts\IIS_Check.ps1"
 #>
 
 param (
-    [string]$ServiceName = "apache2",   # Linuxi Apache teenus. Kui Windows: "W3SVC" (IIS).
-    [string]$LogPath = "/var/log/Check-Apache.log"
+  # Võimalus määrata teenuse nimi käsurealt
+  [string]$ServiceName = "W3SVC"
 )
 
-# Funktsioon logimiseks
-function Write-Log {
-    param([string]$Message)
-    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    $entry = "[$timestamp] $Message"
-    # Kirjuta ka konsooli ja logifaili
-    Write-Output $entry
-    try {
-        Add-Content -Path $LogPath -Value $entry
-    } catch {
-        Write-Output "Ei saanud kirjutada logifaili ${LogFile}: $_"
-    }
+# Logi asukoht; vajadusel loo kataloog C:\Logs
+$LogPath = "C:\Logs\IIS_Check.log"
+if (-not (Test-Path $LogPath)) {
+  # Kui logifail puudub, loo kaust ja päis
+  $logDir = Split-Path $LogPath
+  if (-not (Test-Path $logDir)) {
+    New-Item -Path $logDir -ItemType Directory -Force | Out-Null
+  }
+  "Timestamp,Level,Message" | Out-File -FilePath $LogPath -Encoding UTF8
 }
 
-# Alustame logimist
-Write-Log "Starting Apache check (PowerShell)..."
+# Funktsioon: logisõnumite salvestus
+function Write-Message {
+  param (
+    [string]$Level,
+    [string]$Message
+  )
+  $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+  $entry = "$timestamp,$Level,$Message"
+  Add-Content -Path $LogPath -Value $entry
+  Write-Output "[$timestamp] [$Level] $Message"
+}
 
-# Kontrollime, kas systemd teenus eksisteerib
+# 1) Kontrolli, kas teenus on paigaldatud
 try {
-    $unitFile = powershell -c "systemctl list-unit-files | Select-String '^$ServiceName.service'" 2>$null
+  $svc = Get-Service -Name $ServiceName -ErrorAction Stop
 } catch {
-    Write-Log "systemctl ei ole saadaval või viga: $_"
-    exit 1
+  Write-Message -Level "ERROR" -Message "Teenust '$ServiceName' ei leitud (mitte paigaldatud)."
+  exit 1
 }
 
-if (-not $unitFile) {
-    Write-Log "Teenust '$ServiceName' ei leitud. Ei ole installitud."
-    exit 1
-}
+Write-Message -Level "OK" -Message "Teenus '$ServiceName' on paigaldatud."
 
-# Kontrollime teenuse staatust
-$status = (powershell -c "systemctl is-active $ServiceName").Trim()
-if ($status -eq "active") {
-    Write-Log "$ServiceName on töökorras (active)."
+# 2) Kontrolli, kas teenus töötab
+if ($svc.Status -eq "Running") {
+  Write-Message -Level "OK" -Message "Teenus '$ServiceName' töötab: állikas."
+  exit 0
 } else {
-    Write-Log "$ServiceName EI ole töökorras (status: $status)."
-    # Võime lisada teenuse käivitamise loogi:
-    # powershell -c "systemctl start $ServiceName"
+  Write-Message -Level "WARN" -Message "Teenus '$ServiceName' on paigaldatud, kuid ei tööta (Status: $($svc.Status))."
+  exit 2
 }
-
-exit 0
