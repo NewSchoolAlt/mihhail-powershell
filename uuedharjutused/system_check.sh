@@ -1,33 +1,32 @@
 #!/usr/bin/env bash
 #
 # Skript: system_tests.sh
-# Eesmärk: Automatiseerida hulga süsteemiteste:
-#   1) Faili olemasolu kontroll
-#   2) Teenuse staatus (running/inactive) kontroll
-#   3) Faili omanik/õiguste kontroll
+# Eesmärk: Kontrollida järjestikku:
+#   1) Failide olemasolu
+#   2) Teenuste staatust
+#   3) Failide omaniku ja õiguseid
+# Logifail: ./system_tests.log (töökataloogis)
 #
 # Kasutus:
-#   sudo chmod +x /opt/scripts/system_tests.sh
-#   sudo /opt/scripts/system_tests.sh
+#   chmod +x system_tests.sh
+#   ./system_tests.sh
 #
-# Väljund: logitakse nii ekraanile kui ka logifaili /var/log/system_tests.log
-# Tagastusväärtus: 0 = kõik testid läbitud, muidu ≠0 (vigade arv).
+# Tagastusväärtus:
+#   0 = kõik testid läbitud edukalt
+#   >0 = vigade arv
 
-LOGFILE="/var/log/system_tests.log"
-TIMESTAMP="$(date '+%Y-%m-%d %H:%M:%S')"
-EXIT_CODE=0   # Selle muutuja abil kokku loendame vigade arvu
+LOGFILE="./system_tests.log"
+EXIT_CODE=0   # kokku loendame vigade arvu
 
-# 1) Defineerime testitavad üksused
+# --- 1) Defineerime testitavad üksused ---
 
 # 1.1. Failid, mille olemasolu kontrollime
-#    Näiteks /etc/passwd, /home/testuser/testfile.txt (loo eelnevalt dummy-fail)
 FILES_TO_CHECK=(
   "/etc/passwd"
   "/home/testuser/testfile.txt"
 )
 
 # 1.2. Teenused, mille staatust kontrollime
-#    Näiteks ssh, cron, apache2 jne.
 SERVICES_TO_CHECK=(
   "ssh"
   "cron"
@@ -35,45 +34,39 @@ SERVICES_TO_CHECK=(
 )
 
 # 1.3. Failide omanikuva ja õiguste kontroll
-#    Vorm: [failitee]="omanikuNimi:grupinimi:mode"
-#    Näiteks /etc/passwd peab olema root:root 644, ja
-#    /home/testuser/testfile.txt tuleb omada testuser:testuser 755
+#    Vorm: [failitee]="omanik:grupp:mode"
 declare -A PERM_CHECKS=(
   ["/etc/passwd"]="root:root:644"
   ["/home/testuser/testfile.txt"]="testuser:testuser:755"
 )
 
+# --- 2) Funktsioon: logi ekraanile ja logifaili ---
 
-# 2) Funktsioon: logi ekraanile ja logifaili
 log_msg() {
   local level="$1"
   local message="$2"
   local ts
-  ts="$(date '+%Y-%m-%d %H:%M:%S')" 
+  ts="$(date '+%Y-%m-%d %H:%M:%S')"
   echo "[$ts] [$level] $message" | tee -a "$LOGFILE"
 }
 
-# 3) Kontrolli, kas logifail olemas; vajadusel loo see ja lisa päis
+# --- 3) Initsialiseerime logifaili, kui seda pole ---
+
 init_log() {
   if [[ ! -e "$LOGFILE" ]]; then
-    # Loo logikataloog, kui puudub
-    local logdir
-    logdir="$(dirname "$LOGFILE")"
-    if [[ ! -d "$logdir" ]]; then
-      mkdir -p "$logdir"
-    fi
     # Lisa alguses päis
-    echo "===== System Tests Log =====" > "$LOGFILE"
-    echo "Algus: $(date '+%Y-%m-%d %H:%M:%S')" >> "$LOGFILE"
-    echo "============================" >> "$LOGFILE"
+    {
+      echo "===== System Tests Log ====="
+      echo "Algus: $(date '+%Y-%m-%d %H:%M:%S')"
+      echo "============================"
+    } > "$LOGFILE"
   fi
 }
 
-# 4) Käivita logi initsialiseerimine
 init_log
 
+# --- 4) 1. OSA: FAILI OLEMASOLU KONTROLL ---
 
-# 5) 1. OSA: FAILI OLEMASOLU KONTROLL
 log_msg "INFO" "Alustame failide olemasolu kontrolli..."
 for file in "${FILES_TO_CHECK[@]}"; do
   if [[ -e "$file" ]]; then
@@ -84,22 +77,21 @@ for file in "${FILES_TO_CHECK[@]}"; do
   fi
 done
 
+# --- 5) 2. OSA: TEENUSE STAATUS KONTROLL ---
 
-# 6) 2. OSA: TEENUSE STAATUS
 log_msg "INFO" "Alustame teenuste staatuse kontrolli..."
 for svc in "${SERVICES_TO_CHECK[@]}"; do
-  # Esiteks kontrollime, kas teenuse nimetus üldse eksisteerib
+  # Esiteks kontrollime, kas unit-file eksisteerib
   if ! systemctl list-unit-files | grep -q "^${svc}\.service"; then
     log_msg "ERROR" "Teenust ei leitud (puudub unit-file): $svc"
     ((EXIT_CODE++))
     continue
   fi
 
-  # Nüüd kontrollime, kas teenus on aktiivne (running)
+  # Kontrollime, kas teenus töötab
   if systemctl is-active --quiet "$svc"; then
     log_msg "OK" "Teenuse '$svc' olek: RUNNING"
   else
-    # Teenus kas stoppunud või disabled
     local status
     status="$(systemctl is-active "$svc")"
     log_msg "WARN" "Teenuse '$svc' olek: $status"
@@ -107,12 +99,11 @@ for svc in "${SERVICES_TO_CHECK[@]}"; do
   fi
 done
 
+# --- 6) 3. OSA: FAILI OMANIKU JA ÕIGUSTE KONTROLL ---
 
-# 7) 3. OSA: FAILI OMANIKU JA ÕIGUSTE KONTROLL
 log_msg "INFO" "Alustame faili omaniku/õiguste kontrolli..."
 for filepath in "${!PERM_CHECKS[@]}"; do
   expected="${PERM_CHECKS[$filepath]}"
-  # Eraldame oodatud väärtused: kasutaja:grupp:mode
   IFS=":" read -r exp_user exp_group exp_mode <<< "$expected"
 
   # Kontroll: kas fail olemas?
@@ -123,7 +114,6 @@ for filepath in "${!PERM_CHECKS[@]}"; do
   fi
 
   # Loeme tegeliku omaniku, grupi ja õigused
-  # stat -c "%U:%G:%a" tagastab nt "root:root:644"
   actual="$(stat -c "%U:%G:%a" "$filepath")"
   IFS=":" read -r act_user act_group act_mode <<< "$actual"
 
@@ -136,12 +126,12 @@ for filepath in "${!PERM_CHECKS[@]}"; do
   fi
 done
 
+# --- 7) Kokkuvõte ja väljumine ---
 
-# 8) Kokkuvõte ja väljumine
 if (( EXIT_CODE == 0 )); then
   log_msg "INFO" "Kõik testid läbitud edukalt. Exit code = 0"
 else
-  log_msg "INFO" "Mõningad testid ebaõnnestusid. Vigade arv: $EXIT_CODE"
+  log_msg "INFO" "Mõned testid ebaõnnestusid. Vigade arv: $EXIT_CODE"
 fi
 
 exit "$EXIT_CODE"
