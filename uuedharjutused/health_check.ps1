@@ -1,53 +1,56 @@
 <#
 .SYNOPSIS
-    Kogub süsteemi terviseandmed (CPU, DS, RAM) ja salvestab logifaili.
+  Kontrollib, kas teenus 'W3SVC' (IIS) on paigaldatud ja käivitunud.
 
-.NOTES
-    Käivitamiseks Linuxi PowerShell Core või Windows PowerShell (mõningad käsklused võivad erineda).
-    Logifail: /var/log/health_check.log
+.Kasutus
+  Lae skript alla: C:\Scripts\IIS_Check.ps1
+  Käivita PowerShell-is (jookse administraatori õigustes):
+    powershell.exe -ExecutionPolicy Bypass -File "C:\Scripts\IIS_Check.ps1"
 #>
 
 param (
-    [string]$LogFile = "/var/log/health_check.log"
+  # Võimalus määrata teenuse nimi käsurealt
+  [string]$ServiceName = "W3SVC"
 )
 
-function Write-Log {
-    param([string]$Message)
-    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    $entry = "[$timestamp] $Message"
-    Write-Output $entry
-    try {
-        Add-Content -Path $LogFile -Value $entry
-    } catch {
-        Write-Output "Ei saanud kirjutada logifaili ${LogFile}: $_"
-    }
+# Logi asukoht; vajadusel loo kataloog C:\Logs
+$LogPath = "C:\Logs\IIS_Check.log"
+if (-not (Test-Path $LogPath)) {
+  # Kui logifail puudub, loo kaust ja päis
+  $logDir = Split-Path $LogPath
+  if (-not (Test-Path $logDir)) {
+    New-Item -Path $logDir -ItemType Directory -Force | Out-Null
+  }
+  "Timestamp,Level,Message" | Out-File -FilePath $LogPath -Encoding UTF8
 }
 
-Write-Log "Alustasin süsteemi tervisekontrolli..."
+# Funktsioon: logisõnumite salvestus
+function Log-Message {
+  param (
+    [string]$Level,
+    [string]$Message
+  )
+  $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+  $entry = "$timestamp,$Level,$Message"
+  Add-Content -Path $LogPath -Value $entry
+  Write-Output "[$timestamp] [$Level] $Message"
+}
 
-# 1) CPU koormus (Linuxis: top või /proc/loadavg)
+# 1) Kontrolli, kas teenus on paigaldatud
 try {
-    $cpuLoad = (Get-Content "/proc/loadavg").Split()[0]
-    Write-Log "CPU keskmine koormus (1-min): $cpuLoad"
+  $svc = Get-Service -Name $ServiceName -ErrorAction Stop
 } catch {
-    Write-Log "Ei saanud lugeda /proc/loadavg: $_"
+  Log-Message -Level "ERROR" -Message "Teenust '$ServiceName' ei leitud (mitte paigaldatud)."
+  exit 1
 }
 
-# 2) Mälu kasutus (Linux: free -m)
-try {
-    $mem = bash -c "free -m | awk 'NR==2 {printf(\"%s/%s MB (%.2f%%)\", \$3,\$2, \$3/\$2*100)}'" 2>&1
-    Write-Log "Mälu kasutus: $mem"
-} catch {
-    Write-Log "Probleem mälu info kogumisel: $_"
-}
+Log-Message -Level "OK" -Message "Teenus '$ServiceName' on paigaldatud."
 
-# 3) Ketaste kasutus (Linux: df -h /)
-try {
-    $disk = bash -c "df -h / | awk 'NR==2 {printf(\"%s/%s (%s)\", \$3,\$2,\$5)}'" 2>&1
-    Write-Log "Root-ketta kasutus: $disk"
-} catch {
-    Write-Log "Probleem kettakasutuse kogumisel: $_"
+# 2) Kontrolli, kas teenus töötab
+if ($svc.Status -eq "Running") {
+  Log-Message -Level "OK" -Message "Teenus '$ServiceName' töötab: állikas."
+  exit 0
+} else {
+  Log-Message -Level "WARN" -Message "Teenus '$ServiceName' on paigaldatud, kuid ei tööta (Status: $($svc.Status))."
+  exit 2
 }
-
-Write-Log "Süsteemi tervisekontroll lõppes."
-exit 0
