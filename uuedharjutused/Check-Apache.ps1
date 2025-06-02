@@ -2,10 +2,11 @@
 .SYNOPSIS
   Kontrollib, kas teenus 'W3SVC' (IIS) on paigaldatud ja käivitunud.
 
-.Kasutus
-  Lae skript alla: C:\Scripts\IIS_Check.ps1
-  Käivita PowerShell-is (jookse administraatori õigustes):
-    powershell.exe -ExecutionPolicy Bypass -File "C:\Scripts\IIS_Check.ps1"
+.KASUTUS
+  Salvesta skript kausta, nt C:\Scripts\IIS_Check.ps1
+  Liigu PowerShell’is samasse kausta (cd C:\Scripts)
+  Käivita administraatoriõigustes:
+    powershell.exe -ExecutionPolicy Bypass -File ".\IIS_Check.ps1"
 #>
 
 param (
@@ -13,18 +14,24 @@ param (
   [string]$ServiceName = "W3SVC"
 )
 
-# Logi asukoht; vajadusel loo kataloog C:\Logs
-$LogPath = "C:\Logs\IIS_Check.log"
+# Skripti käivituskaust (selle kausta sees luuakse log)
+$ScriptDir = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Definition }
+
+# Logi asukoht skripti kaustas
+$LogPath = Join-Path -Path $ScriptDir -ChildPath "IIS_Check.log"
+
+# Kui logifaili kataloogi pole (teoreetiliselt peaks $ScriptDir olemas olema), siis loo see
+$logDir = Split-Path $LogPath
+if (-not (Test-Path $logDir)) {
+  New-Item -Path $logDir -ItemType Directory -Force | Out-Null
+}
+
+# Kui logifail puudub, lisa päis
 if (-not (Test-Path $LogPath)) {
-  # Kui logifail puudub, loo kaust ja päis
-  $logDir = Split-Path $LogPath
-  if (-not (Test-Path $logDir)) {
-    New-Item -Path $logDir -ItemType Directory -Force | Out-Null
-  }
   "Timestamp,Level,Message" | Out-File -FilePath $LogPath -Encoding UTF8
 }
 
-# Funktsioon: logisõnumite salvestus
+# Funktsioon: logisõnumite salvestus ja ekraanile väljatrükk
 function Write-Message {
   param (
     [string]$Level,
@@ -48,7 +55,7 @@ Write-Message -Level "OK" -Message "Teenus '$ServiceName' on paigaldatud."
 
 # 2) Kontrolli, kas teenus töötab
 if ($svc.Status -eq "Running") {
-  Write-Message -Level "OK" -Message "Teenus '$ServiceName' töötab: állikas."
+  Write-Message -Level "OK" -Message "Teenus '$ServiceName' töötab."
   exit 0
 } else {
   Write-Message -Level "WARN" -Message "Teenus '$ServiceName' on paigaldatud, kuid ei tööta (Status: $($svc.Status))."
