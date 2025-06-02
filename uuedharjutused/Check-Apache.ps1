@@ -21,7 +21,7 @@ function Write-Log {
     try {
         Add-Content -Path $LogPath -Value $entry
     } catch {
-        Write-Output "Ei saanud kirjutada logifaili $LogPath: $_"
+        Write-Output "Ei saanud kirjutada logifaili ${LogFile}: $_"
     }
 }
 
