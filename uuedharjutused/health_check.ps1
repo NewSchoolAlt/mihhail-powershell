@@ -19,7 +19,7 @@ function Write-Log {
     try {
         Add-Content -Path $LogFile -Value $entry
     } catch {
-        Write-Output "Ei saanud kirjutada logifaili $LogFile: $_"
+        Write-Output "Ei saanud kirjutada logifaili ${LogFile}: $_"
     }
 }
 
