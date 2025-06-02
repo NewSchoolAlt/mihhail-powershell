@@ -1,34 +1,34 @@
 #!/usr/bin/env bash
 #
-# check_apache.sh
-# Ülesanne: Kontrollib, kas Apache2 (httpd) on installitud ja käimas.
-#
-# Usage: sudo bash check_apache.sh
+# Skript: apache_check.sh
+# Eesmärk: Kontrollida, kas Apache2 on paigaldatud ja käivitunud.
+# Kasutus: chmod +x apache_check.sh; ./apache_check.sh
 
-SERVICE_NAME="apache2"    # Debian/Ubuntu: apache2. CentOS/Fedora: httpd
-LOGFILE="/var/log/check_apache.log"
+SERVICE="apache2"
+LOGFILE="/var/log/apache_check.log"
+TIMESTAMP="$(date '+%Y-%m-%d %H:%M:%S')"
 
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting Apache check..." | tee -a "$LOGFILE"
+# Funktsioon: logi jooksvaid sõnumeid nii ekraanile kui failile
+log_msg() {
+  local level="$1"
+  local message="$2"
+  echo "[$TIMESTAMP] [$level] $message" | tee -a "$LOGFILE"
+}
 
-# 1) Kontrollime, kas teenus on installitud (kas käsklust saab leida)
-if ! command -v systemctl &> /dev/null; then
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] systemctl ei ole saadaval. Võib-olla ei kasutata systemd-d?" | tee -a "$LOGFILE"
-    exit 1
-fi
-
-if ! systemctl list-unit-files | grep -q "^${SERVICE_NAME}.service"; then
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Teenus '${SERVICE_NAME}' ei ole installitud." | tee -a "$LOGFILE"
-    exit 1
-fi
-
-# 2) Kontrollime teenuse staatust
-STATUS=$(systemctl is-active "$SERVICE_NAME")
-if [ "$STATUS" = "active" ]; then
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] ${SERVICE_NAME} on töökorras (active)." | tee -a "$LOGFILE"
+# 1) Kontrolli, kas käsk 'apache2' üldse eksisteerib (paigaldatud)
+if ! command -v "$SERVICE" &>/dev/null; then
+  log_msg "ERROR" "Teenust '$SERVICE' ei leitud (mitte paigaldatud)."
+  exit 1
 else
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] ${SERVICE_NAME} EI ole töökorras (status: $STATUS)." | tee -a "$LOGFILE"
-    # Soovi korral võime teenuse käivitada:
-    # systemctl start "$SERVICE_NAME"
+  log_msg "OK" "Teenus '$SERVICE' on paigaldatud."
 fi
 
-exit 0
+# 2) Kontrolli, kas teenus on aktiivne (running)
+if systemctl is-active --quiet "$SERVICE"; then
+  log_msg "OK" "Teenus '$SERVICE' töötab: aktiivne (running)."
+  exit 0
+else
+  # Teenus paigaldatud, aga ei tööta
+  log_msg "WARN" "Teenus '$SERVICE' on paigaldatud, kuid ei tööta (inactive/stopped)."
+  exit 2
+fi
