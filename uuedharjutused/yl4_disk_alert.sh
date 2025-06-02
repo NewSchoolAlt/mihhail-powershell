@@ -4,7 +4,7 @@
 # Eesmärk: Kontrollida "/" ketta kasutust ja saata Gmaili kaudu e-post, kui ≥70%.
 # Kasutus: chmod +x disk_alert.sh; sudo /opt/scripts/disk_alert.sh
 #
-# NB! Eeldame, et msmtp on õigesti seadistatud (/etc/msmtprc).
+# NB! Eeldame, et msmtp on õigesti seadistatud (/etc/msmtprc). !!!!
 
 # === 1. Konfiguratsioon ===
 
