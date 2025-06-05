@@ -1,44 +1,62 @@
 Import-Module Selenium
 
-# Määra ChromeDriver'i asukoht (eelduseks on, et chromedriver.exe on sama kaustas, kust skripti käivitad)
+# Määrake ChromeDriveri asukoht (eeldusel, et chromedriver.exe asub samas kaustas, kust skript käivitatakse)
 $chromeDriverPath = (Get-Location).Path
 
 try {
-    # Käivita Chrome Selenium abil
-    $driver = Start-SeChrome -WebDriverDirectory $chromeDriverPath
+    # —————————————
+    #  CHROMEDRIVERSERVICE’I KONFIGUREERIMINE
+    # —————————————
+    # Looge ChromeDriverService, et varjata käsuviiba akent ja vaikida algdiagnostika teated
+    $service = [OpenQA.Selenium.Chrome.ChromeDriverService]::CreateDefaultService($chromeDriverPath)
+    $service.HideCommandPromptWindow = $true
+    $service.SuppressInitialDiagnosticInformation = $true
 
-    # Ava W3Schools HTML-vormide leht
+    # (Valikuline) Määrake Chrome’i logitasemeks ainult veateated
+    $options = New-Object OpenQA.Selenium.Chrome.ChromeOptions
+    $options.AddArgument("--log-level=3")
+
+    # Käivitage ChromeDriver kasutades eelnevalt seadistatud service ja options
+    $driver = New-Object OpenQA.Selenium.Chrome.ChromeDriver($service, $options)
+
+    # —————————————
+    #  NAVIGEERIMINE JA TEHTAVAD TOIMINGUD
+    # —————————————
+
+    # Avage W3Schools HTML-vormide lehekülg
     $driver.Navigate().GoToUrl("https://www.w3schools.com/html/html_forms.asp")
-
-    # Vähene paus, et leht saaks alustada laadimist
     Start-Sleep -Seconds 1
 
-    # Proovi automaatselt klikata "Accept Cookies" nupul (id="accept-choices") :contentReference[oaicite:0]{index=0}
+    # Proovige automaatselt klõpsata "Accept Cookies" nupul (id="accept-choices")
     try {
         $cookieButton = $driver.FindElementById("accept-choices")
         if ($cookieButton) {
             $cookieButton.Click()
-            # Kui vajalik, oota veel natuke, et banner kaoks
+            # Oodake veidi, kuni bänner kaob
             Start-Sleep -Seconds 1
         }
     }
     catch {
-        # Kui bannerit ei leitud, jätka ilma veateateta
+        # Kui küpsise nõusoleku bännerit ei leita, jätkatakse vigadeta
     }
 
-    # Lisa lühike paus, et lehe ülejäänud elemendid jõuaksid laadida
+    # Lühike paus, et lehe ülejäänud elemendid jõuaksid laadida
     Start-Sleep -Seconds 1
 
-    # Leia tekstiväljad "First name" ja "Last name" ning oota, kuni need on saadaval
+    # Oodake tekstiväljade "First name" ja "Last name" ilmumist, kuni maksimaalselt 10 sekundit
     $firstNameField = $null
     $lastNameField  = $null
-
     $timeout = 10
     $elapsed = 0
+
     while ((-not $firstNameField -or -not $lastNameField) -and ($elapsed -lt $timeout)) {
         try {
-            if (-not $firstNameField) { $firstNameField = $driver.FindElementById("fname") }
-            if (-not $lastNameField)  { $lastNameField  = $driver.FindElementById("lname") }
+            if (-not $firstNameField) {
+                $firstNameField = $driver.FindElementByXPath("/html/body/div[5]/div/div[2]/div[1]/div[1]/div[3]/div/form/input[1]")
+            }
+            if (-not $lastNameField) {
+                $lastNameField = $driver.FindElementByXPath("/html/body/div[5]/div/div[2]/div[1]/div[1]/div[3]/div/form/input[2]")
+            }
         }
         catch {
             Start-Sleep -Seconds 1
@@ -50,20 +68,20 @@ try {
         throw "Tekstivälju ei õnnestunud 10 sekundi jooksul laadida."
     }
 
-    # Sisesta nimed
+    # Sisestage tekstiväljadele nimed "Test" ja "User"
     $firstNameField.Clear()
     $lastNameField.Clear()
     $firstNameField.SendKeys("Test")
     $lastNameField.SendKeys("User")
 
-    # Leia ja vajuta "Submit" nuppu
+    # Leidke ja klõpsake "Submit" nuppu
     $submitButton = $driver.FindElementByXPath("//input[@type='submit' and @value='Submit']")
     $submitButton.Click()
 
-    # Oota, kuni leht uuesti laeb ja tulemuse tekst ilmub
+    # Oodake, kuni leht uuesti laeb ja tulemus ilmub
     Start-Sleep -Seconds 2
 
-    # Loe tulemuse kogu tekst (<body> sisu) ja väljasta see konsooli
+    # Looge lehe kogu tekst (<body> sisu) ja väljasta see konsooli
     $bodyText = $driver.FindElementByTagName("body").Text
     Write-Host "Tulemuse tekst:"
     Write-Host $bodyText
@@ -72,8 +90,10 @@ catch {
     Write-Host "Viga: $($_.Exception.Message)"
 }
 finally {
+    # Lühike paus enne brauseri sulgemist
     Start-Sleep -Seconds 3
-    # Sulge brauser
+
+    # Sulgege brauser, kui draiver on olemas
     if ($driver) {
         $driver.Quit()
     }
