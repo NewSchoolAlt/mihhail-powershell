@@ -1,8 +1,3 @@
-# Installi ja lae Selenium WebDriver NuGet pakettide kaudu
-if (-not (Get-Module -ListAvailable -Name Selenium)) {
-    Install-PackageProvider -Name NuGet -Force -Scope CurrentUser
-    Install-Module -Name Selenium -Force -Scope CurrentUser
-}
 Import-Module Selenium
 
 # Määra ChromeDriver'i asukoht (eelduseks on, et chromedriver.exe on sama kaustas, kust skripti käivitad)
