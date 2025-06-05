@@ -1,5 +1,8 @@
 Import-Module Selenium
 
+
+
+# see on natuke rohkem advanced ja optimised kui see mis mihhailiga koostasime, mi
 # Määrake ChromeDriveri asukoht (eeldusel, et chromedriver.exe asub samas kaustas, kust skript käivitatakse)
 $chromeDriverPath = (Get-Location).Path
 
@@ -7,7 +10,6 @@ try {
     # —————————————
     #  CHROMEDRIVERSERVICE’I KONFIGUREERIMINE
     # —————————————
-    # Looge ChromeDriverService, et varjata käsuviiba akent ja vaikida algdiagnostika teated
     $service = [OpenQA.Selenium.Chrome.ChromeDriverService]::CreateDefaultService($chromeDriverPath)
     $service.HideCommandPromptWindow = $true
     $service.SuppressInitialDiagnosticInformation = $true
@@ -27,61 +29,102 @@ try {
     $driver.Navigate().GoToUrl("https://www.w3schools.com/html/html_forms.asp")
     Start-Sleep -Seconds 1
 
-    # Proovige automaatselt klõpsata "Accept Cookies" nupul (id="accept-choices")
+    # Proovige automaatselt klõpsata "Accept Cookies" nupul (kui see ilmub)
     try {
         $cookieButton = $driver.FindElementById("accept-choices")
-        if ($cookieButton) {
+        if ($cookieButton.Displayed -and $cookieButton.Enabled) {
             $cookieButton.Click()
-            # Oodake veidi, kuni bänner kaob
             Start-Sleep -Seconds 1
         }
     }
     catch {
-        # Kui küpsise nõusoleku bännerit ei leita, jätkatakse vigadeta
+        # Kui küpsisenupu bännerit ei leita, jätkatakse vigadeta
     }
 
-    # Lühike paus, et lehe ülejäänud elemendid jõuaksid laadida
     Start-Sleep -Seconds 1
 
-    # Oodake tekstiväljade "First name" ja "Last name" ilmumist, kuni maksimaalselt 10 sekundit
+    # —————————————
+    #  FIRST NAME JA LAST NAME VÄLJADE OOTAMINE
+    # —————————————
+
+    $timeout      = 15
+    $elapsed      = 0
     $firstNameField = $null
     $lastNameField  = $null
-    $timeout = 10
-    $elapsed = 0
 
     while ((-not $firstNameField -or -not $lastNameField) -and ($elapsed -lt $timeout)) {
         try {
             if (-not $firstNameField) {
-                $firstNameField = $driver.FindElementByXPath("/html/body/div[5]/div/div[2]/div[1]/div[1]/div[3]/div/form/input[1]")
+                $candidate = $driver.FindElementById("fname") # parem kui XPath, mis võib lehe struktuuri muutumisel puruneda ja kui on pikk on aeglane
+                if ($candidate.Displayed -and $candidate.Enabled) {
+                    $firstNameField = $candidate
+                }
             }
             if (-not $lastNameField) {
-                $lastNameField = $driver.FindElementByXPath("/html/body/div[5]/div/div[2]/div[1]/div[1]/div[3]/div/form/input[2]")
+                $candidate = $driver.FindElementById("lname") # parem kui XPath, mis võib lehe struktuuri muutumisel puruneda ja kui on pikk on aeglane
+                if ($candidate.Displayed -and $candidate.Enabled) {
+                    $lastNameField = $candidate
+                }
             }
         }
         catch {
-            Start-Sleep -Seconds 1
+            # Elementi veel ei leitud või ei ole nähtav/aktiivne
+        }
+        if (-not $firstNameField -or -not $lastNameField) {
+            Start-Sleep -Seconds .5
             $elapsed++
         }
     }
 
     if (-not $firstNameField -or -not $lastNameField) {
-        throw "Tekstivälju ei õnnestunud 10 sekundi jooksul laadida."
+        throw "Tekstivälju 'First name' või 'Last name' ei õnnestunud $timeout sekundi jooksul leida."
     }
 
-    # Sisestage tekstiväljadele nimed "Test" ja "User"
+    # —————————————
+    #  TEKSTIVÄLJADELE NIMETE SISSEKIRJUTAMINE
+    # —————————————
+
     $firstNameField.Clear()
-    $lastNameField.Clear()
+    Start-Sleep -Milliseconds 200
     $firstNameField.SendKeys("Test")
+    Start-Sleep -Milliseconds 200
+
+    $lastNameField.Clear()
+    Start-Sleep -Milliseconds 200
     $lastNameField.SendKeys("User")
+    Start-Sleep -Milliseconds 200
 
-    # Leidke ja klõpsake "Submit" nuppu
-    $submitButton = $driver.FindElementByXPath("//input[@type='submit' and @value='Submit']")
+    # —————————————
+    #  SUBMIT-NUPU KLÕPSAMINE JA TULEMUSE KUVAMINE
+    # —————————————
+
+    $timeout = 10
+    $elapsed = 0
+    $submitButton = $null
+
+    while (-not $submitButton -and ($elapsed -lt $timeout)) {
+        try {
+            $candidate = $driver.FindElementByXPath("//input[@type='submit' and @value='Submit']")
+            if ($candidate.Displayed -and $candidate.Enabled) {
+                $submitButton = $candidate
+            }
+        }
+        catch {
+            # Nuppu ei ole veel leitav
+        }
+        if (-not $submitButton) {
+            Start-Sleep -Seconds 1
+            $elapsed++
+        }
+    }
+
+    if (-not $submitButton) {
+        throw "'Submit' nuppu ei õnnestunud $timeout sekundi jooksul leida."
+    }
+
     $submitButton.Click()
-
-    # Oodake, kuni leht uuesti laeb ja tulemus ilmub
     Start-Sleep -Seconds 2
 
-    # Looge lehe kogu tekst (<body> sisu) ja väljasta see konsooli
     $bodyText = $driver.FindElementByTagName("body").Text
     Write-Host "Tulemuse tekst:"
     Write-Host $bodyText
@@ -90,10 +133,7 @@ catch {
     Write-Host "Viga: $($_.Exception.Message)"
 }
 finally {
-    # Lühike paus enne brauseri sulgemist
     Start-Sleep -Seconds 3
-
-    # Sulgege brauser, kui draiver on olemas
     if ($driver) {
         $driver.Quit()
     }
